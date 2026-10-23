@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmailStatus {
+  scheduled
+  processing
+  sent
+  failed
+}
+
+model User {
+  id              String           @id @default(uuid())
+  googleId        String           @unique
+  email           String           @unique
+  name            String
+  avatarUrl       String?
+  createdAt       DateTime         @default(now())
+  senders         SenderAccount[]
+  batches         Batch[]
+  emails          Email[]
+  slackConnection SlackConnection?
+}
+
+// An SMTP account the user can send from (Ethereal test accounts in development)
+model SenderAccount {
+  id                String   @id @default(uuid())
+  userId            String
+  email             String
+  smtpHost          String
+  smtpPort          Int
+  smtpUser          String
+  smtpPassEncrypted String
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batches           Batch[]
+
+  @@unique([userId, email])
+}
+
+// One "Schedule" click. Subject/body/settings live here once instead of being copied onto every email row.
+model Batch {
+  id          String        @id @default(uuid())
+  userId      String
+  senderId    String
+  subject     String
+  body        String
+  startAt     DateTime
+  minDelayMs  Int
+  hourlyLimit Int
+  // Hash of the whole request. Unique per user, so submitting the same request twice cannot create a second batch.
+  batchKey    String
+  createdAt   DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sender      SenderAccount @relation(fields: [senderId], references: [id])
+  emails      Email[]
+
+  @@unique([userId, batchKey])
+}
+
+// One row (and one BullMQ job, id "email_<id>") per recipient
+model Email {
+  id            String      @id @default(uuid())
+  batchId       String
+  userId        String
+  toEmail       String
+  status        EmailStatus @default(scheduled)
+  scheduledAt   DateTime // originally requested time
+  nextSendAt    DateTime // earliest time it may be sent; moves forward when rate limited
+  sentAt        DateTime?
+  attempts      Int         @default(0)
+  smtpMessageId String?
+  previewUrl    String?
+  lastError     String?
+  queuedAt      DateTime? // null = row saved but BullMQ job not confirmed yet (recovered on API start)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  batch         Batch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, toEmail])
+  @@index([userId, status, nextSendAt])
+  @@index([userId, status, updatedAt])
+  @@index([status, queuedAt])
+}
+
+model SlackConnection {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  teamName             String
+  channelName          String
+  webhookUrlEncrypted  String
+  accessTokenEncrypted String?
+  createdAt            DateTime @default(now())
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
