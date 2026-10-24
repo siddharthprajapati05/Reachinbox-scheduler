@@ -62,5 +62,8 @@ export async function deleteSender(userId: string, senderId: string) {
   if (!sender || sender.userId !== userId) {
     throw new HttpError(404, 'not_found', 'Sender not found');
   }
+  // Remove linked emails and batches first (cascade)
+  await prisma.email.deleteMany({ where: { batch: { senderId } } });
+  await prisma.batch.deleteMany({ where: { senderId } });
   await prisma.senderAccount.delete({ where: { id: senderId } });
 }
