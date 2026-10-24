@@ -35,7 +35,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   let response: Response;
   try {
-    response = await fetch(path, { method, headers, body, credentials: 'same-origin' });
+    const base = import.meta.env.VITE_API_BASE ?? '';
+    response = await fetch(`${base}${path}`, { method, headers, body, credentials: 'include' });
   } catch {
     throw new ApiError(0, 'network_error', 'Cannot reach the server. Is the backend running?');
   }
