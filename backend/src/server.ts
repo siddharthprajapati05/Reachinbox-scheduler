@@ -26,7 +26,19 @@ const app = express();
 
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false })); // CSP off so the Bull Board UI can load; this server only serves JSON + Bull Board
-app.use(cors({ origin: config.FRONTEND_URL, credentials: true }));
+const allowedOrigins = [
+  config.FRONTEND_URL,
+  'http://localhost:5173',
+  'https://reachinbox-scheduler-wheat.vercel.app',
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+    else callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '2mb' }));
 
 // Sessions live in Redis, so users stay logged in when the API restarts.
@@ -38,9 +50,9 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      httpOnly: true, // JavaScript cannot read the cookie
-      sameSite: 'lax', // not sent on cross-site POSTs
-      secure: config.isProduction, // HTTPS only in production
+      httpOnly: true,
+      sameSite: config.isProduction ? 'none' : 'lax', // 'none' required for cross-site cookies in production
+      secure: config.isProduction,                      // HTTPS only in production
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }),
