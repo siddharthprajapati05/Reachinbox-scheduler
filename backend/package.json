@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "start:api": "node dist/server.js",
     "start:worker": "node dist/worker.js",
+    "start:combined": "node dist/combined.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
