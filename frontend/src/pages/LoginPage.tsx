@@ -31,7 +31,7 @@ export default function LoginPage() {
         )}
 
         {/* A normal link: the browser leaves for Google, then Google sends it back to the backend callback. */}
-        <a href="/api/auth/google" className="btn-secondary mt-6 w-full py-3">
+        <a href={`${import.meta.env.VITE_API_BASE ?? ''}/api/auth/google`} className="btn-secondary mt-6 w-full py-3">
           <GoogleIcon />
           Continue with Google
         </a>
