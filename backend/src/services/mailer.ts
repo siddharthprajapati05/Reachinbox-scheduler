@@ -18,6 +18,9 @@ function getTransporter(sender: SenderAccount): Transporter {
       port: sender.smtpPort,
       secure: sender.smtpPort === 465,
       auth: { user: sender.smtpUser, pass: decrypt(sender.smtpPassEncrypted) },
+      connectionTimeout: 30000,  // 30s — fail fast instead of hanging
+      socketTimeout: 30000,
+      greetingTimeout: 30000,
     });
     transporters.set(sender.id, transporter);
   }
