@@ -167,6 +167,7 @@ export default function DashboardPage() {
           settings={settings}
           senders={senders}
           onSenderAdded={(sender) => setSenders((current) => [...current, sender])}
+          onSenderDeleted={(id) => setSenders((current) => current.filter((s) => s.id !== id))}
           onClose={() => setComposeOpen(false)}
           onScheduled={() => {
             setTab('scheduled');

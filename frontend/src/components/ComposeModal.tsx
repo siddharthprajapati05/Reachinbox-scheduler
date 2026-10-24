@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
-import { ApiError, createSender, parseRecipientFile, scheduleEmails } from '../api';
+import { ApiError, createCustomSender, createSender, deleteSender, parseRecipientFile, scheduleEmails } from '../api';
+import type { CustomSmtpInput } from '../api';
 import { toLocalInputValue } from '../format';
 import { useToast } from '../toast';
 import type { InvalidRow, ParseResult, Sender, Settings } from '../types';
@@ -8,13 +9,14 @@ interface ComposeModalProps {
   settings: Settings;
   senders: Sender[];
   onSenderAdded: (sender: Sender) => void;
+  onSenderDeleted: (senderId: string) => void;
   onClose: () => void;
   onScheduled: () => void;
 }
 
 type FieldErrors = Partial<Record<'senderId' | 'subject' | 'body' | 'recipients' | 'startAt' | 'minDelayMs' | 'hourlyLimit', string>>;
 
-export default function ComposeModal({ settings, senders, onSenderAdded, onClose, onScheduled }: ComposeModalProps) {
+export default function ComposeModal({ settings, senders, onSenderAdded, onSenderDeleted, onClose, onScheduled }: ComposeModalProps) {
   const toast = useToast();
 
   const [senderId, setSenderId] = useState(senders[0]?.id ?? '');
@@ -33,6 +35,17 @@ export default function ComposeModal({ settings, senders, onSenderAdded, onClose
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState('');
   const [serverInvalidRows, setServerInvalidRows] = useState<InvalidRow[]>([]);
+
+  // Custom SMTP form
+  const [showSmtpForm, setShowSmtpForm] = useState(false);
+  const [smtpForm, setSmtpForm] = useState<CustomSmtpInput>({
+    email: '',
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: 587,
+    smtpUser: '',
+    smtpPass: '',
+  });
+  const [smtpError, setSmtpError] = useState('');
 
   // Close with the Escape key
   useEffect(() => {
@@ -71,6 +84,38 @@ export default function ComposeModal({ settings, senders, onSenderAdded, onClose
       toast('error', error instanceof ApiError ? error.message : 'Could not add a sender');
     } finally {
       setAddingSender(false);
+    }
+  }
+
+  async function handleAddCustomSender() {
+    setSmtpError('');
+    if (!smtpForm.email || !smtpForm.smtpHost || !smtpForm.smtpUser || !smtpForm.smtpPass) {
+      setSmtpError('All SMTP fields are required.');
+      return;
+    }
+    setAddingSender(true);
+    try {
+      const sender = await createCustomSender(smtpForm);
+      onSenderAdded(sender);
+      setSenderId(sender.id);
+      setShowSmtpForm(false);
+      toast('success', `Added sender ${sender.email}`);
+    } catch (error) {
+      setSmtpError(error instanceof ApiError ? error.message : 'Could not add sender. Check your SMTP credentials.');
+    } finally {
+      setAddingSender(false);
+    }
+  }
+
+  async function handleDeleteSender(id: string, email: string) {
+    if (!window.confirm(`Delete sender "${email}"? This cannot be undone.`)) return;
+    try {
+      await deleteSender(id);
+      onSenderDeleted(id);
+      if (senderId === id) setSenderId('');
+      toast('success', `Deleted sender ${email}`);
+    } catch (error) {
+      toast('error', error instanceof ApiError ? error.message : 'Could not delete sender');
     }
   }
 
@@ -160,21 +205,73 @@ export default function ComposeModal({ settings, senders, onSenderAdded, onClose
             <label htmlFor="sender" className="field-label">
               Send from
             </label>
-            <div className="flex gap-2">
-              <select id="sender" className="input" value={senderId} onChange={(event) => setSenderId(event.target.value)}>
-                {senders.length === 0 && <option value="">No sender yet</option>}
-                {senders.map((sender) => (
-                  <option key={sender.id} value={sender.id}>
-                    {sender.email}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-1">
+              {senders.length === 0 && <p className="text-sm text-slate-400 italic">No senders yet — add one below.</p>}
+              {senders.map((s) => (
+                <div key={s.id} className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 cursor-pointer text-sm ${
+                  senderId === s.id ? 'border-green-500 bg-green-50 font-semibold' : 'border-slate-200 hover:bg-slate-50'
+                }`} onClick={() => setSenderId(s.id)}>
+                  <span>{s.email}</span>
+                  <button
+                    type="button"
+                    title="Delete sender"
+                    className="ml-2 text-red-400 hover:text-red-600 text-base leading-none"
+                    onClick={(e) => { e.stopPropagation(); void handleDeleteSender(s.id, s.email); }}
+                  >🗑️</button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-2">
               <button type="button" className="btn-secondary shrink-0" onClick={() => void handleAddSender()} disabled={addingSender}>
                 {addingSender ? 'Adding...' : 'Add test sender'}
               </button>
+              <button
+                type="button"
+                className="btn-secondary shrink-0"
+                onClick={() => { setShowSmtpForm((v) => !v); setSmtpError(''); }}
+              >
+                {showSmtpForm ? 'Cancel' : '+ Real SMTP'}
+              </button>
             </div>
-            <p className="mt-1 text-xs text-slate-500">A test sender is a free Ethereal inbox. Emails are captured there, not delivered to real people.</p>
+            <p className="mt-1 text-xs text-slate-500">Use <strong>Add test sender</strong> for Ethereal (fake inbox) or <strong>+ Real SMTP</strong> for Gmail/Postmark/etc.</p>
             {errors.senderId && <p className="field-error">{errors.senderId}</p>}
+
+            {showSmtpForm && (
+              <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+                <p className="text-sm font-semibold text-blue-900">Add real SMTP sender</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="field-label text-xs">From Email</label>
+                    <input className="input" type="email" placeholder="you@gmail.com" value={smtpForm.email}
+                      onChange={(e) => setSmtpForm((f) => ({ ...f, email: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="field-label text-xs">SMTP Host</label>
+                    <input className="input" placeholder="smtp.gmail.com" value={smtpForm.smtpHost}
+                      onChange={(e) => setSmtpForm((f) => ({ ...f, smtpHost: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="field-label text-xs">SMTP Port</label>
+                    <input className="input" type="number" value={smtpForm.smtpPort}
+                      onChange={(e) => setSmtpForm((f) => ({ ...f, smtpPort: Number(e.target.value) }))} />
+                  </div>
+                  <div>
+                    <label className="field-label text-xs">SMTP Username</label>
+                    <input className="input" placeholder="you@gmail.com" value={smtpForm.smtpUser}
+                      onChange={(e) => setSmtpForm((f) => ({ ...f, smtpUser: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="field-label text-xs">SMTP Password / App Password</label>
+                    <input className="input" type="password" placeholder="App password" value={smtpForm.smtpPass}
+                      onChange={(e) => setSmtpForm((f) => ({ ...f, smtpPass: e.target.value }))} />
+                  </div>
+                </div>
+                {smtpError && <p className="text-xs text-red-600">{smtpError}</p>}
+                <button type="button" className="btn-primary text-sm" onClick={() => void handleAddCustomSender()} disabled={addingSender}>
+                  {addingSender ? 'Saving...' : 'Save SMTP sender'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div>

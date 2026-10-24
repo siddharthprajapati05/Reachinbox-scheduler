@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../lib/asyncHandler';
 import { currentUserId, requireAuth, requireCsrf } from '../middleware/auth';
-import { createSender, listSenders } from '../services/senderService';
+import { createSender, deleteSender, listSenders } from '../services/senderService';
 
 export const senderRouter = Router();
 senderRouter.use(requireAuth);
@@ -31,5 +31,14 @@ senderRouter.post(
     const custom = Object.keys(body).length === 0 ? undefined : customSmtpSchema.parse(body);
     const sender = await createSender(currentUserId(req), custom);
     res.status(201).json({ data: sender });
+  }),
+);
+
+senderRouter.delete(
+  '/:id',
+  requireCsrf,
+  asyncHandler(async (req, res) => {
+    await deleteSender(currentUserId(req), req.params.id);
+    res.json({ data: { ok: true } });
   }),
 );

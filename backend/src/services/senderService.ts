@@ -56,3 +56,11 @@ export async function createSender(userId: string, custom?: CustomSmtpInput) {
     throw error;
   }
 }
+
+export async function deleteSender(userId: string, senderId: string) {
+  const sender = await prisma.senderAccount.findUnique({ where: { id: senderId } });
+  if (!sender || sender.userId !== userId) {
+    throw new HttpError(404, 'not_found', 'Sender not found');
+  }
+  await prisma.senderAccount.delete({ where: { id: senderId } });
+}

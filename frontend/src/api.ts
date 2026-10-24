@@ -15,7 +15,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   json?: unknown;
   form?: FormData;
 }
@@ -66,6 +66,19 @@ export const logout = () => request<{ ok: boolean }>('/api/auth/logout', { metho
 export const getSettings = () => request<Settings>('/api/settings');
 export const listSenders = () => request<Sender[]>('/api/senders');
 export const createSender = () => request<Sender>('/api/senders', { method: 'POST', json: {} });
+
+export interface CustomSmtpInput {
+  email: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+}
+export const createCustomSender = (input: CustomSmtpInput) =>
+  request<Sender>('/api/senders', { method: 'POST', json: input });
+
+export const deleteSender = (id: string) =>
+  request<{ ok: boolean }>(`/api/senders/${id}`, { method: 'DELETE' });
 
 export function parseRecipientFile(file: File): Promise<ParseResult> {
   const form = new FormData();
